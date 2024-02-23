@@ -51,7 +51,8 @@ type TaskServer interface {
 	Stop() context.Context
 }
 type Options struct {
-	RunMode string
+	RunMode             string
+	StopTimeoutDuration time.Duration
 }
 type server struct {
 	opt        *Options
@@ -70,6 +71,9 @@ func (s *server) initOption() {
 	if s.opt.RunMode == "" {
 		s.opt.RunMode = Docker
 	}
+	if s.opt.StopTimeoutDuration == 0 {
+		s.opt.StopTimeoutDuration = time.Second * time.Duration(15)
+	}
 }
 func newServer(opt *Options, serverType string) *server {
 	s := &server{
@@ -85,6 +89,16 @@ func (s *server) run() error {
 			if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				panic(err)
 			}
+		} else if s.serverType == taskServer {
+			s.taskServer.Start()
+		} else {
+			err := s.fxApp.Start(context.Background())
+			if err != nil {
+				panic(err)
+			}
+		}
+		if s.opt.RunMode == Default {
+			_ = s.writeRestartScript(os.Getpid())
 		}
 	}()
 	// 等待中断信号来优雅地关闭服务器
